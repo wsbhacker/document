@@ -1,0 +1,163 @@
+= spring boot(2.3.2)
+:toc: auto
+:sectnums:
+
+== 流程图示
+[plantuml,format=svg]
+----
+A -> B: 启动,SpringApplication load ApplicationContextInitializer(spring.factories)
+note over B
+* 实列化**org.springframework.context.ApplicationContextInitializer**(无参构造)
+
+** spring-boot.jar
+*** org.springframework.boot.context.ConfigurationWarningsApplicationContextInitializer
+*** org.springframework.boot.context.ContextIdApplicationContextInitializer
+** org.springframework.boot.context.config.DelegatingApplicationContextInitializer
+*** org.springframework.boot.rsocket.context.RSocketPortInfoApplicationContextInitializer
+*** org.springframework.boot.web.context.ServerPortInfoApplicationContextInitializer
+
+** spring-autoconfigure.jar
+*** org.springframework.boot.autoconfigure.SharedMetadataReaderFactoryContextInitializer
+*** org.springframework.boot.autoconfigure.logging.ConditionEvaluationReportLoggingListener
+
+end note
+
+B -> C: SpringApplication load ApplicationListener(spring.factories)
+note over C
+* 实列化**org.springframework.context.ApplicationListener**(无参构造)
+** spring-boot.jar
+*** org.springframework.boot.ClearCachesApplicationListener
+*** org.springframework.boot.builder.ParentContextCloserApplicationListener
+*** org.springframework.boot.cloud.CloudFoundryVcapEnvironmentPostProcessor
+*** org.springframework.boot.context.FileEncodingApplicationListener
+*** org.springframework.boot.context.config.AnsiOutputApplicationListener
+*** org.springframework.boot.context.config.ConfigFileApplicationListener
+*** org.springframework.boot.context.config.DelegatingApplicationListener
+*** org.springframework.boot.context.logging.ClasspathLoggingApplicationListener
+*** org.springframework.boot.context.logging.LoggingApplicationListener
+*** org.springframework.boot.liquibase.LiquibaseServiceLocatorApplicationListener
+
+** spring-autoconfigure.jar
+*** org.springframework.boot.autoconfigure.BackgroundPreinitializer
+
+end note
+
+C -> D: SpringApplication init
+note over D
+* SpringApplication.primarySources
+* SpringApplication.webApplicationType
+* SpringApplication.initializers=List<ApplicationContextInitializer>
+* SpringApplication.listeners=List<ApplicationListener>
+* SpringApplication.mainApplicationClass
+end note
+
+D -> E: SpringApplication.run()
+E -> F: load EventPublishingRunListener
+note over F
+* spring-boot.jar
+** org.springframework.boot.SpringApplicationRunListener
+*** org.springframework.boot.context.event.EventPublishingRunListener
+**** new EventPublishingRunListener(SpringApplication application, String[] args)
+
+end note
+
+F -> G: publish <color:red>ApplicationStartingEvent</color>
+note over G
+* BackgroundPreinitializer.performPreinitialization()
+** ConversionServiceInitializer
+** ValidationInitializer
+** MessageConverterInitializer
+** JacksonInitializer
+** CharsetInitializer
+
+* LoggingApplicationListener.onApplicationStartingEvent
+end note
+
+G -> H: SpringApplication.prepareEnvironment()
+note over H
+* servletConfigInitParams
+
+* servletContextInitParams
+
+* systemProperties
+
+* systemEnvironment
+
+* defaultProperties
+
+* commandLineArgs(添加到第一位)
+
+* configurationProperties(添加到第一位)
+end note
+
+H -> I : publish <color:red>ApplicationEnvironmentPreparedEvent</color>
+note over I
+* AnsiOutputApplicationListener
+** 控制台输出相关?
+* ClasspathLoggingApplicationListener
+** 好像啥也没干
+
+* ConfigFileApplicationListener
+** loadPostProcessors: <color:green>org.springframework.boot.env.EnvironmentPostProcessor</color>
+*** org.springframework.boot.cloud.CloudFoundryVcapEnvironmentPostProcessor
+*** org.springframework.boot.env.SpringApplicationJsonEnvironmentPostProcessor
+**** 处理json配置?
+*** org.springframework.boot.env.SystemEnvironmentPropertySourceEnvironmentPostProcessor
+*** org.springframework.boot.reactor.DebugAgentEnvironmentPostProcessor
+*** ConfigFileApplicationListener
+**** 随机数配置?
+
+* DelegatingApplicationListener
+** 用来加载自定义的事件监听类
+* FileEncodingApplicationListener
+** 根据条件指定全局file编码
+* LoggingApplicationListener
+** logger配置初始化
+end note
+
+H -> J: spring.main配置绑定到SpringApplication实例
+
+E -> K: SpringApplication.createApplicationContext()
+note over K
+* 初始化**org.springframework.boot.web.servlet.context.AnnotationConfigServletWebServerApplicationContext**
+** init reader = AnnotatedBeanDefinitionReader
+** init scanner = ClassPathBeanDefinitionScanner
+** init beanFactory = DefaultListableBeanFactory
+end note
+
+E -> L:SpringApplication.prepareContext()
+note over L
+* init ApplicationContextInitializer
+** DelegatingApplicationContextInitializer
+*** 自定义ApplicationContextInitializer的委托初始化类
+** ConfigurationWarningsApplicationContextInitializer
+** ContextIdApplicationContextInitializer
+** RSocketPortInfoApplicationContextInitializer
+** ServerPortInfoApplicationContextInitializer
+*** 也作为一个ApplicationListener<WebServerInitializedEvent>
+** SharedMetadataReaderFactoryContextInitializer
+*** 为applicationContext添加BeanFactoryPostProcessor
+** ConditionEvaluationReportLoggingListener
+end note
+
+L -> M: listeners.contextPrepared(context)
+M -> N: EventPublishingRunListener push ApplicationContextInitializedEvent
+note over N
+* 被接收ApplicationContextInitializedEvent或其父类事件的接收者接收
+end note
+L -> O: listeners.contextLoaded(context);
+O -> P: EventPublishingRunListener push ApplicationPreparedEvent
+E -> Q: SpringApplication.refreshContext(context);
+Q -> R: applicationContext.refresh();
+R -> S: applicationContext.prepareBeanFactory
+note over S
+* beanFactory准备
+end note
+S -> T: push ContextRefreshedEvent
+E -> U: publish ApplicationStartedEvent
+E -> V: publish ApplicationReadyEvent
+
+
+
+
+----

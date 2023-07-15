@@ -1,0 +1,78 @@
+= spring批处理
+:toc: auto
+:sectnums:
+
+== 相关表(global库),表关系查看数据库表结构(外键约束)
+[[spring_batch_step_execution_context]]
+* BATCH_STEP_EXECUTION_CONTEXT;
+
+[[spring_batch_step_execution]]
+* BATCH_STEP_EXECUTION;
+
+[[spring_batch_job_execution_context]]
+* BATCH_JOB_EXECUTION_CONTEXT;
+** <<spring_batch_job_execution,BATCH_JOB_EXECUTION对应的执行上下文>>
+
+[[spring_batch_job_execution_params]]
+* BATCH_JOB_EXECUTION_PARAMS;
+** <<spring_batch_job_instance,不同任务>>用于区分的标记.
+** 每次任务重新执行时都会重新生成一条记录,但内容不会变
+
+[[spring_batch_job_execution]]
+* BATCH_JOB_EXECUTION;
+** <<spring_batch_job_instance,每次任务重新执行时,都会新建一条记录>>
+** 此记录的状态就是任务的执行状态
+
+[[spring_batch_job_instance]]
+* BATCH_JOB_INSTANCE;
+** 保存生成的任务
+
+== 流程
+
+=== 整体流程图
+
+[plantuml,format=svg]
+----
+participant 定时任务 as A
+participant 批处理 as B
+
+A -> B: 定时job定时调用批处理
+B -> B: 保存任务到BATCH_JOB_INSTANCE
+note right
+* 根据不同的参数将生成多个任务实例
+** 比如根据30分钟作为一个间隔,一天生成48个任务
+** 任务保存在BATCH_JOB_INSTANCE表
+end note
+group 执行任务
+B -> B:
+note right
+* 生成BATCH_JOB_EXECUTION
+* 生成BATCH_JOB_EXECUTION_PARAMS
+* 生成BATCH_JOB_EXECUTION_CONTEXT
+* 生成BATCH_STEP_EXECUTION
+* 生成BATCH_STEP_EXECUTION_CONTEXT
+end note
+B -> B: 执行云资金业务逻辑
+end
+----
+
+=== 相关表操作流程图
+[plantuml,format=svg]
+----
+定时调度 --> BATCH_JOB_INSTANCE
+定时调度: 定时执行,触发调用任务
+BATCH_JOB_INSTANCE:根据参数生成任务实例,同样的参数只存在一个实例
+BATCH_JOB_INSTANCE --> BATCH_JOB_EXECUTION
+BATCH_JOB_EXECUTION: 每次实例重复执行时,都会生成新的记录
+BATCH_JOB_EXECUTION --> BATCH_JOB_EXECUTION_PARAMS
+BATCH_JOB_EXECUTION_PARAMS:每次实例重复执行时,都会生成新的记录,同一个任务实例的参数内容应该是一样的
+BATCH_JOB_EXECUTION --> BATCH_JOB_EXECUTION_CONTEXT
+BATCH_JOB_EXECUTION_CONTEXT:可不关注
+BATCH_JOB_EXECUTION --> BATCH_STEP_EXECUTION
+BATCH_STEP_EXECUTION:每次实例重复执行时,都会生成新的记录
+BATCH_STEP_EXECUTION --> BATCH_STEP_EXECUTION_CONTEXT
+BATCH_STEP_EXECUTION_CONTEXT:可不关注
+BATCH_STEP_EXECUTION --> 执行业务逻辑
+执行业务逻辑 --> [*]:结束
+
+----

@@ -1,0 +1,95 @@
+= quartz流程梳理
+
+[plantuml,format=svg]
+----
+participant QuartzSchedulerThread as A
+participant database as B
+participant WorkThread as C
+===事务第一阶段:开始===
+A <-> B :
+note right
+* <color:red>获取数据库锁</color>
+<code>
+select * from QRTZ_LOCKS
+where SCHED_NAME = 'quartzScheduler' and LOCK_NAME = 'TRIGGER_ACCESS';
+</code>
+end note
+
+A <-> B :
+note right
+* 获取符合条件的触发器(<color:red>状态为WAITING的</color>)
+<code>
+select TRIGGER_NAME,TRIGGER_GROUP,NEXT_FIRE_TIME,PRIORITY
+from QRTZ_TRIGGERS
+where SCHED_NAME = 'quartzScheduler'
+and TRIGGER_STATE = 'WAITING'
+and NEXT_FIRE_TIME <= ?
+and (MISFIRE_INSTR = -1 or (MISFIRE_INSTR != -1 and NEXT_FIRE_TIME >= ?))
+order by NEXT_FIRE_TIME asc, PRIORITY desc;
+</code>
+end note
+
+A <-> B:
+note right
+* <color:red>更新QRTZ_TRIGGERS状态为ACQUIRED</color>
+<code>
+update QRTZ_TRIGGERS
+set TRIGGER_STATE = 'ACQUIRED'
+where SCHED_NAME = 'quartzScheduler' and TRIGGER_NAME = ?
+and TRIGGER_GROUP = ? and TRIGGER_STATE = 'WAITING';
+</code>
+end note
+
+A <-> B : <color:red>QRTZ_FIRED_TRIGGERS插入一条状态为ACQUIRED的记录.</color>
+A <-> B : 提交事务
+===事务第一阶段:结束===
+A -> A :
+note right
+* sigChangeForTxCompletion
+end note
+
+===事务第二阶段:开始===
+A <-> B:
+note right
+* <color:red>获取数据库锁</color>
+<code>
+select * from QRTZ_LOCKS
+where SCHED_NAME = 'quartzScheduler' and LOCK_NAME = 'TRIGGER_ACCESS';
+</code>
+end note
+
+A <-> B:
+note right
+* <color:red>更新QRTZ_FIRED_TRIGGERS的状态为EXECUTING</color>
+<code>
+update QRTZ_FIRED_TRIGGERS
+set INSTANCE_NAME = 'quartzScheduler', FIRED_TIME = ?, SCHED_TIME = ?,
+STATE = 'EXECUTING', JOB_NAME = ?,JOB_GROUP = ?,IS_NONCONCURRENT = ?,
+REQUESTS_RECOVERY = ?
+where SCHED_NAME = ? and ENTRY_ID = ?
+</code>
+end note
+
+alt job不允许并发(state = BLOCKED)
+A <-> B: <color:red>更新QRTZ_TRIGGERS状态:WAITING -> BLOCKED</color>
+A <-> B: <color:red>更新QRTZ_TRIGGERS状态:ACQUIRED -> BLOCKED</color>
+A <-> B: <color:red>更新QRTZ_TRIGGERS状态:PAUSED_BLOCKED -> BLOCKED</color>
+end
+alt 下次触发时间为空(state = COMPLETE)
+
+end
+A <-> A :
+note right
+* <color:red>更新QRTZ_TRIGGERS信息(previousFireTime,nextFireTime等)</color>
+** <color:red>nextFireTime的计算是基于当前值计算的.</color>
+end note
+A <-> B : <color:red>更新QRTZ_TRIGGERS为上述的state</color>
+===事务第二阶段:结束===
+
+
+A <-> A : 执行job
+===事务第三阶段:结束===
+A <-> B : <color:red>更新QRTZ_TRIGGERS状态:BLOCKED -> WAITING</color>
+===事务第三阶段:结束===
+
+----
