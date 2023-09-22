@@ -1,0 +1,48 @@
+= reactor流程描述
+
+
+== 流程
+
+[plantuml,format=svg]
+----
+
+[*] --> Publisher
+note on link
+创建publisher
+Publisher.subscribe(Subscriber)
+end note
+
+
+Publisher --> 数据源
+
+Publisher --> Subscriber
+note on link
+* Subscriber.onSubscribe(Subscription),
+end note
+
+Subscriber --> Subscription
+ note on link
+* <color:red>将Subscriber,数据源(数据源生成者或者数据本身)包装成Subscription</color>
+** Subscription的作用其实就可以理解为将数据源(数据),与订阅者Subscriber产生关系.
+* Subscription.request()
+ end note
+
+
+
+
+Subscription --> 数据源
+note on link
+* 回调数据源(静态数据直接回调Subscriber)
+end note
+
+
+
+数据源 --> Subscriber
+note on link
+* 由订阅者处理数据
+end note
+
+
+
+
+----
